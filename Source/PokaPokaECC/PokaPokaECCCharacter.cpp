@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "PokaPokaECCCharacter.h"
 #include "Engine/LocalPlayer.h"
@@ -14,20 +14,19 @@
 
 APokaPokaECCCharacter::APokaPokaECCCharacter()
 {
-	// Set size for collision capsule
+	// コリジョンカプセルのサイズ設定
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-		
-	// Don't rotate when the controller rotates. Let that just affect the camera.
+
+	// コントローラーの回転に合わせてキャラクターを回転させない
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
 
-	// Configure character movement
+	// キャラクターの移動設定（入力方向にキャラクターが向く）
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
 
-	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
-	// instead of recompiling to adjust them
+	// ジャンプや歩行速度の基本設定
 	GetCharacterMovement()->JumpZVelocity = 500.f;
 	GetCharacterMovement()->AirControl = 0.35f;
 	GetCharacterMovement()->MaxWalkSpeed = 500.f;
@@ -35,35 +34,40 @@ APokaPokaECCCharacter::APokaPokaECCCharacter()
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
 	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
 
-	// Create a camera boom (pulls in towards the player if there is a collision)
+	// ★トップビュー用：カメラブーム（SpringArm）の作成と設定
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 400.0f;
-	CameraBoom->bUsePawnControlRotation = true;
+	CameraBoom->TargetArmLength = 1200.0f; // カメラとの距離
+	CameraBoom->SetRelativeRotation(FRotator(-60.f, 0.f, 0.f)); // 見下ろす角度
+	CameraBoom->bUsePawnControlRotation = false; // カメラを勝手に回転させない
+	CameraBoom->bDoCollisionTest = false; // 障害物でカメラが寄るのを防ぐ
 
-	// Create a follow camera
+	// ★追加・修正：カメラブームの回転をワールド空間で固定し、親（キャラクター）の回転を一切引き継がないようにする
+	CameraBoom->SetUsingAbsoluteRotation(true);
+	CameraBoom->bInheritPitch = false;
+	CameraBoom->bInheritYaw = false;
+	CameraBoom->bInheritRoll = false;
+
+	// ★トップビュー用：フォローカメラの作成と設定
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
-	FollowCamera->bUsePawnControlRotation = false;
-
-	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
-	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+	FollowCamera->bUsePawnControlRotation = false; // カメラを勝手に回転させない
 }
 
 void APokaPokaECCCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	// Set up action bindings
+	// アクションバインディングの設定
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
-		
-		// Jumping
+
+		// ジャンプ
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 
-		// Moving
+		// 移動
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &APokaPokaECCCharacter::Move);
 		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &APokaPokaECCCharacter::Look);
 
-		// Looking
+		// 視点移動（※トップビュー固定の場合は実質機能しなくなりますが、入力自体は残しておきます）
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &APokaPokaECCCharacter::Look);
 	}
 	else
@@ -74,19 +78,19 @@ void APokaPokaECCCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 
 void APokaPokaECCCharacter::Move(const FInputActionValue& Value)
 {
-	// input is a Vector2D
+	// 入力値をVector2Dとして取得
 	FVector2D MovementVector = Value.Get<FVector2D>();
 
-	// route the input
+	// 実際の移動処理へルーティング
 	DoMove(MovementVector.X, MovementVector.Y);
 }
 
 void APokaPokaECCCharacter::Look(const FInputActionValue& Value)
 {
-	// input is a Vector2D
+	// 入力値をVector2Dとして取得
 	FVector2D LookAxisVector = Value.Get<FVector2D>();
 
-	// route the input
+	// 実際の視点移動処理へルーティング
 	DoLook(LookAxisVector.X, LookAxisVector.Y);
 }
 
@@ -94,17 +98,18 @@ void APokaPokaECCCharacter::DoMove(float Right, float Forward)
 {
 	if (GetController() != nullptr)
 	{
-		// find out which way is forward
-		const FRotator Rotation = GetController()->GetControlRotation();
-		const FRotator YawRotation(0, Rotation.Yaw, 0);
+		// トップビュー用に修正：コントローラーの回転ではなく、CameraBoom（カメラ）の向きを基準にする
+		// これにより、カメラが固定された状態でも画面の上下左右とキャラクターの移動方向が常に一致します。
+		const FRotator CameraRotation = CameraBoom->GetComponentRotation();
+		const FRotator YawRotation(0, CameraRotation.Yaw, 0);
 
-		// get forward vector
+		// カメラから見た前方ベクトルを取得
 		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
 
-		// get right vector 
+		// カメラから見た右方ベクトルを取得
 		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-		// add movement 
+		// 移動入力を追加
 		AddMovementInput(ForwardDirection, Forward);
 		AddMovementInput(RightDirection, Right);
 	}
@@ -112,22 +117,17 @@ void APokaPokaECCCharacter::DoMove(float Right, float Forward)
 
 void APokaPokaECCCharacter::DoLook(float Yaw, float Pitch)
 {
-	if (GetController() != nullptr)
-	{
-		// add yaw and pitch input to controller
-		AddControllerYawInput(Yaw);
-		AddControllerPitchInput(Pitch);
-	}
+	
 }
 
 void APokaPokaECCCharacter::DoJumpStart()
 {
-	// signal the character to jump
+	// キャラクターにジャンプを指示
 	Jump();
 }
 
 void APokaPokaECCCharacter::DoJumpEnd()
 {
-	// signal the character to stop jumping
+	// キャラクターにジャンプ終了を指示
 	StopJumping();
 }
