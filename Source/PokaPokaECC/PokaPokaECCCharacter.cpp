@@ -96,22 +96,24 @@ void APokaPokaECCCharacter::Look(const FInputActionValue& Value)
 
 void APokaPokaECCCharacter::DoMove(float Right, float Forward)
 {
-	if (GetController() != nullptr)
+	// コントローラーをPlayerControllerとして取得
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
-		// トップビュー用に修正：コントローラーの回転ではなく、CameraBoom（カメラ）の向きを基準にする
-		// これにより、カメラが固定された状態でも画面の上下左右とキャラクターの移動方向が常に一致します。
-		const FRotator CameraRotation = CameraBoom->GetComponentRotation();
-		const FRotator YawRotation(0, CameraRotation.Yaw, 0);
+		// プレイヤーの現在のカメラ（レベルに置いた固定カメラ）の情報を取得
+		if (APlayerCameraManager* CameraManager = PC->PlayerCameraManager)
+		{
+			// カメラの向きを取得し、Z軸（ヨー）だけの回転にする
+			const FRotator CameraRotation = CameraManager->GetCameraRotation();
+			const FRotator YawRotation(0, CameraRotation.Yaw, 0);
 
-		// カメラから見た前方ベクトルを取得
-		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+			// カメラから見た前方ベクトルと右方ベクトルを計算
+			const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+			const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-		// カメラから見た右方ベクトルを取得
-		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-
-		// 移動入力を追加
-		AddMovementInput(ForwardDirection, Forward);
-		AddMovementInput(RightDirection, Right);
+			// 移動入力を追加
+			AddMovementInput(ForwardDirection, Forward);
+			AddMovementInput(RightDirection, Right);
+		}
 	}
 }
 
