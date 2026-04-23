@@ -49,6 +49,12 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* MouseLookAction;
 
+	UPROPERTY(EditAnywhere, Category = "Input")
+	UInputAction* InteractAction;
+
+	// インタラクト処理の関数
+	void Interact(const FInputActionValue& Value);
+
 public:
 
 	/** Constructor */
@@ -84,6 +90,18 @@ public:
 	/** Handles jump pressed inputs from either controls or UI interfaces */
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoJumpEnd();
+
+	// 現在持っているアイテムを保持する変数
+	UPROPERTY(BlueprintReadWrite, Category = "Interact")
+	AActor* HeldItem;
+
+	// 手のソケット名（後でスケルトンに設定します）
+	UPROPERTY(EditAnywhere, Category = "Interact")
+	FName HandSocketName = FName("HoldSocket");
+
+	// モノを拾う距離
+	UPROPERTY(EditAnywhere, Category = "Interact")
+	float InteractDistance = 150.0f;
 
 public:
 

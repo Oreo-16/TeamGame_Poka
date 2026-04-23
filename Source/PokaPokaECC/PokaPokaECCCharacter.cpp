@@ -11,6 +11,8 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "PokaPokaECC.h"
+#include "Engine/World.h"
+#include "Components/PrimitiveComponent.h"
 
 APokaPokaECCCharacter::APokaPokaECCCharacter()
 {
@@ -69,6 +71,8 @@ void APokaPokaECCCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 
 		// 視点移動（※トップビュー固定の場合は実質機能しなくなりますが、入力自体は残しておきます）
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &APokaPokaECCCharacter::Look);
+
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &APokaPokaECCCharacter::Interact);
 	}
 	else
 	{
@@ -132,4 +136,69 @@ void APokaPokaECCCharacter::DoJumpEnd()
 {
 	// キャラクターにジャンプ終了を指示
 	StopJumping();
+}
+
+void APokaPokaECCCharacter::Interact(const FInputActionValue& Value)
+{
+	if (HeldItem)
+	{
+		// ------------------------------------
+		// モノを置く（手放す）処理
+		// ------------------------------------
+		// 1. キャラクターから切り離す
+		HeldItem->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+		// 2. 目の前に置く（自分にめり込まないように少し前に出す）
+		FVector DropLocation = GetActorLocation() + GetActorForwardVector() * 100.0f;
+		HeldItem->SetActorLocation(DropLocation);
+
+		// 3. 物理演算をオンにして床に落とす
+		UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent());
+		if (PrimComp)
+		{
+			PrimComp->SetSimulatePhysics(true);
+		}
+
+		// 持っているアイテムをリセット
+		HeldItem = nullptr;
+	}
+	else
+	{
+		// ------------------------------------
+		// モノを持つ（拾う）処理
+		// ------------------------------------
+		FVector Start = GetActorLocation();
+		FVector End = Start + (GetActorForwardVector() * InteractDistance);
+
+		FHitResult OutHit;
+		FCollisionShape Sphere = FCollisionShape::MakeSphere(50.0f); // 半径50の球で探す
+
+		FCollisionQueryParams Params;
+		Params.AddIgnoredActor(this); // 自分自身は無視する
+
+		// 目の前を判定（Sphere Trace）
+		bool bHit = GetWorld()->SweepSingleByChannel(
+			OutHit, Start, End, FQuat::Identity, ECC_Visibility, Sphere, Params);
+
+		if (bHit && OutHit.GetActor())
+		{
+			AActor* HitActor = OutHit.GetActor();
+
+			// タグで「持てるモノ」か判定する（アイテム側に "Holdable" タグをつけておく）
+			if (HitActor->ActorHasTag(FName("Holdable")))
+			{
+				HeldItem = HitActor;
+
+				// 物理演算がオンになっていると手についてこないのでオフにする
+				UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent());
+				if (PrimComp)
+				{
+					PrimComp->SetSimulatePhysics(false);
+				}
+
+				// キャラクターのメッシュの指定したソケットにくっつける
+				HeldItem->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, HandSocketName);
+			}
+		}
+	}
 }
