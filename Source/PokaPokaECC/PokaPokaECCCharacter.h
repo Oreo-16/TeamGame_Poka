@@ -73,6 +73,13 @@ protected:
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
 
+	// アイテムを手元に引き寄せ中かどうかのフラグ
+	bool bIsItemSnapping = false;
+
+	//　アイテムが手元に吸い付くスピード
+	UPROPERTY(EditAnywhere, Category = "Interact")
+	float ItemSnapSpeed = 15.0f;
+
 public:
 
 	/** Handles move inputs from either controls or UI interfaces */
@@ -90,6 +97,9 @@ public:
 	/** Handles jump pressed inputs from either controls or UI interfaces */
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoJumpEnd();
+
+	// 毎フレームの更新処理
+	virtual void Tick(float DeltaTime) override;
 
 	// 現在持っているアイテムを保持する変数
 	UPROPERTY(BlueprintReadWrite, Category = "Interact")
