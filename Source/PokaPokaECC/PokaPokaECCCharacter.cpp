@@ -11,9 +11,14 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "PokaPokaECC.h"
+#include "Engine/World.h"
+#include "Components/PrimitiveComponent.h"
 
 APokaPokaECCCharacter::APokaPokaECCCharacter()
 {
+	// Tick() を毎フレーム呼び出すように設定
+	PrimaryActorTick.bCanEverTick = true;
+
 	// コリジョンカプセルのサイズ設定
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
@@ -69,6 +74,8 @@ void APokaPokaECCCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 
 		// 視点移動（※トップビュー固定の場合は実質機能しなくなりますが、入力自体は残しておきます）
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &APokaPokaECCCharacter::Look);
+
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &APokaPokaECCCharacter::Interact);
 	}
 	else
 	{
@@ -132,4 +139,108 @@ void APokaPokaECCCharacter::DoJumpEnd()
 {
 	// キャラクターにジャンプ終了を指示
 	StopJumping();
+}
+
+void APokaPokaECCCharacter::Interact(const FInputActionValue& Value)
+{
+	if (HeldItem)
+	{
+		// ------------------------------------
+		// モノを置く（ぽいっと投げる）処理
+		// ------------------------------------
+		// 1. キャラクターから切り離す
+		HeldItem->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+		// ★修正：瞬間移動（SetActorLocation）を削除し、物理演算で投げる
+		UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent());
+		if (PrimComp)
+		{
+			PrimComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			PrimComp->SetSimulatePhysics(true);
+
+			// キャラクターの正面 ＋ 少し上向き のベクトルを作る
+			FVector TossDirection = GetActorForwardVector() + FVector(0.0f, 0.0f, 0.5f);
+			TossDirection.Normalize();
+
+			// 投げる強さ（質量を掛け合わせることで、重さに関わらず一定の距離飛ぶようにする）
+			float TossStrength = 300.0f * PrimComp->GetMass();
+
+			// 力を加えて放り投げる！
+			PrimComp->AddImpulse(TossDirection * TossStrength);
+		}
+
+		// リセット
+		HeldItem = nullptr;
+		bIsItemSnapping = false;
+	}
+	else
+	{
+		// ------------------------------------
+		// モノを持つ（拾う）処理
+		// ------------------------------------
+		FVector Start = GetActorLocation();
+		FVector End = Start + (GetActorForwardVector() * InteractDistance);
+
+		FHitResult OutHit;
+		FCollisionShape Sphere = FCollisionShape::MakeSphere(50.0f);
+
+		FCollisionQueryParams Params;
+		Params.AddIgnoredActor(this);
+
+		bool bHit = GetWorld()->SweepSingleByChannel(OutHit, Start, End, FQuat::Identity, ECC_Visibility, Sphere, Params);
+
+		if (bHit && OutHit.GetActor())
+		{
+			AActor* HitActor = OutHit.GetActor();
+
+			if (HitActor->ActorHasTag(FName("Holdable")))
+			{
+				HeldItem = HitActor;
+
+				UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent());
+				if (PrimComp)
+				{
+					PrimComp->SetSimulatePhysics(false);
+					PrimComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				}
+
+				// ★修正：瞬間移動（SnapToTarget...）ではなく、元の位置を維持（KeepWorldTransform）してくっつける
+				HeldItem->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepWorldTransform, HandSocketName);
+
+				// ★追加：Tickでの引き寄せ処理（スッと手元に飛んでくる動き）を開始
+				bIsItemSnapping = true;
+			}
+		}
+	}
+}
+
+// 毎フレーム呼ばれる処理
+void APokaPokaECCCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	// アイテムを手元に引き寄せ中の場合
+	if (bIsItemSnapping && HeldItem)
+	{
+		// 現在の相対位置と回転を取得
+		FVector CurrentLoc = HeldItem->GetRootComponent()->GetRelativeLocation();
+		FRotator CurrentRot = HeldItem->GetRootComponent()->GetRelativeRotation();
+
+		// 目標地点はソケットの中心（0,0,0）
+		FVector TargetLoc = FVector::ZeroVector; 
+		FRotator TargetRot = FRotator::ZeroRotator;
+
+		// FInterpTo を使って、現在地から目標地点へ滑らかに（ゆったりと）移動させる
+		FVector NewLoc = FMath::VInterpTo(CurrentLoc, TargetLoc, DeltaTime, ItemSnapSpeed);
+		FRotator NewRot = FMath::RInterpTo(CurrentRot, TargetRot, DeltaTime, ItemSnapSpeed);
+
+		HeldItem->GetRootComponent()->SetRelativeLocationAndRotation(NewLoc, NewRot);
+
+		// 十分に手元に近づいたら引き寄せ完了（カチッと固定）
+		if (CurrentLoc.IsNearlyZero(1.0f) && CurrentRot.IsNearlyZero(1.0f))
+		{
+			HeldItem->GetRootComponent()->SetRelativeLocationAndRotation(TargetLoc, TargetRot);
+			bIsItemSnapping = false;
+		}
+	}
 }
