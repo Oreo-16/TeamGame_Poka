@@ -7,118 +7,69 @@
 #include "Logging/LogMacros.h"
 #include "PokaPokaECCCharacter.generated.h"
 
+// クラスの前方宣言（コンポーネントを使用するために必要）
 class USpringArmComponent;
 class UCameraComponent;
+class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
+class UItemHoldComponent;
 
-DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
-
-/**
- *  A simple player-controllable third person character
- *  Implements a controllable orbiting camera
- */
-UCLASS(abstract)
+UCLASS(config = Game)
 class APokaPokaECCCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
-	/** Camera boom positioning the camera behind the character */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	/** トップビュー用のカメラブーム */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	USpringArmComponent* CameraBoom;
 
-	/** Follow camera */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	/** フォローカメラ */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FollowCamera;
-	
-protected:
 
-	/** Jump Input Action */
-	UPROPERTY(EditAnywhere, Category="Input")
+	/** アイテム保持機能を担当するコンポーネント */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Components, meta = (AllowPrivateAccess = "true"))
+	UItemHoldComponent* ItemHoldComp;
+
+	/** マッピングコンテキスト */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputMappingContext* DefaultMappingContext;
+
+	/** ジャンプ入力アクション */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* JumpAction;
 
-	/** Move Input Action */
-	UPROPERTY(EditAnywhere, Category="Input")
+	/** 移動入力アクション */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* MoveAction;
 
-	/** Look Input Action */
-	UPROPERTY(EditAnywhere, Category="Input")
-	UInputAction* LookAction;
-
-	/** Mouse Look Input Action */
-	UPROPERTY(EditAnywhere, Category="Input")
-	UInputAction* MouseLookAction;
-
-	UPROPERTY(EditAnywhere, Category = "Input")
+	/** インタラクト（持つ・置く）入力アクション */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* InteractAction;
 
-	// インタラクト処理の関数
-	void Interact(const FInputActionValue& Value);
-
 public:
-
-	/** Constructor */
-	APokaPokaECCCharacter();	
+	APokaPokaECCCharacter();
 
 protected:
-
-	/** Initialize input action bindings */
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
-protected:
-
-	/** Called for movement input */
+	/** 移動の入力処理 */
 	void Move(const FInputActionValue& Value);
 
-	/** Called for looking input */
-	void Look(const FInputActionValue& Value);
+	/** インタラクトの入力処理（コンポーネントを呼び出す） */
+	void Interact(const FInputActionValue& Value);
 
-	// アイテムを手元に引き寄せ中かどうかのフラグ
-	bool bIsItemSnapping = false;
+protected:
+	// APawn interface
+	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	//　アイテムが手元に吸い付くスピード
-	UPROPERTY(EditAnywhere, Category = "Interact")
-	float ItemSnapSpeed = 15.0f;
-
-public:
-
-	/** Handles move inputs from either controls or UI interfaces */
-	UFUNCTION(BlueprintCallable, Category="Input")
-	virtual void DoMove(float Right, float Forward);
-
-	/** Handles look inputs from either controls or UI interfaces */
-	UFUNCTION(BlueprintCallable, Category="Input")
-	virtual void DoLook(float Yaw, float Pitch);
-
-	/** Handles jump pressed inputs from either controls or UI interfaces */
-	UFUNCTION(BlueprintCallable, Category="Input")
-	virtual void DoJumpStart();
-
-	/** Handles jump pressed inputs from either controls or UI interfaces */
-	UFUNCTION(BlueprintCallable, Category="Input")
-	virtual void DoJumpEnd();
-
-	// 毎フレームの更新処理
-	virtual void Tick(float DeltaTime) override;
-
-	// 現在持っているアイテムを保持する変数
-	UPROPERTY(BlueprintReadWrite, Category = "Interact")
-	AActor* HeldItem;
-
-	// 手のソケット名（後でスケルトンに設定します）
-	UPROPERTY(EditAnywhere, Category = "Interact")
-	FName HandSocketName = FName("HoldSocket");
-
-	// モノを拾う距離
-	UPROPERTY(EditAnywhere, Category = "Interact")
-	float InteractDistance = 150.0f;
+	// ACharacter interface
+	virtual void BeginPlay() override;
 
 public:
-
-	/** Returns CameraBoom subobject **/
+	/** カメラブームを返す */
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
-
-	/** Returns FollowCamera subobject **/
+	/** カメラを返す */
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+	/** アイテム保持コンポーネントを返す */
+	FORCEINLINE class UItemHoldComponent* GetItemHoldComp() const { return ItemHoldComp; }
 };
-
