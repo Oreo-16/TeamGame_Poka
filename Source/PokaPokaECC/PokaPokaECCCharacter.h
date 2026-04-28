@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
+#include "InteractableInterface.h"
 #include "PokaPokaECCCharacter.generated.h"
 
 // クラスの前方宣言（コンポーネントを使用するために必要）
