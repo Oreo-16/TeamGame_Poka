@@ -10,23 +10,23 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
-#include "PokaPokaECC.h"
+
+// 分割したコンポーネントをインクルード
+#include "ItemHoldComponent.h"
 
 APokaPokaECCCharacter::APokaPokaECCCharacter()
 {
 	// コリジョンカプセルのサイズ設定
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
-	// コントローラーの回転に合わせてキャラクターを回転させない
+	// コントローラーの回転に合わせてキャラクターを回転させない（トップビュー用）
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
 
-	// キャラクターの移動設定（入力方向にキャラクターが向く）
+	// キャラクターの移動設定：入力方向にキャラクターが向き、歩行速度などを設定
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
-
-	// ジャンプや歩行速度の基本設定
 	GetCharacterMovement()->JumpZVelocity = 500.f;
 	GetCharacterMovement()->AirControl = 0.35f;
 	GetCharacterMovement()->MaxWalkSpeed = 500.f;
@@ -34,29 +34,45 @@ APokaPokaECCCharacter::APokaPokaECCCharacter()
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
 	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
 
-	// ★トップビュー用：カメラブーム（SpringArm）の作成と設定
+	// トップビュー用：カメラブーム（SpringArm）の作成
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 1200.0f; // カメラとの距離
-	CameraBoom->SetRelativeRotation(FRotator(-60.f, 0.f, 0.f)); // 見下ろす角度
-	CameraBoom->bUsePawnControlRotation = false; // カメラを勝手に回転させない
-	CameraBoom->bDoCollisionTest = false; // 障害物でカメラが寄るのを防ぐ
+	CameraBoom->TargetArmLength = 1200.0f;
+	CameraBoom->SetRelativeRotation(FRotator(-60.f, 0.f, 0.f));
+	CameraBoom->bUsePawnControlRotation = false;
+	CameraBoom->bDoCollisionTest = false;
 
-	// ★追加・修正：カメラブームの回転をワールド空間で固定し、親（キャラクター）の回転を一切引き継がないようにする
+	// カメラの回転を固定（親の回転を引き継がない）
 	CameraBoom->SetUsingAbsoluteRotation(true);
 	CameraBoom->bInheritPitch = false;
 	CameraBoom->bInheritYaw = false;
 	CameraBoom->bInheritRoll = false;
 
-	// ★トップビュー用：フォローカメラの作成と設定
+	// トップビュー用：フォローカメラの作成
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
-	FollowCamera->bUsePawnControlRotation = false; // カメラを勝手に回転させない
+	FollowCamera->bUsePawnControlRotation = false;
+
+	// ★追加：アイテム保持コンポーネントの作成
+	ItemHoldComp = CreateDefaultSubobject<UItemHoldComponent>(TEXT("ItemHoldComp"));
+}
+
+void APokaPokaECCCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// Enhanced Input の入力マッピングを追加
+	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+		{
+			Subsystem->AddMappingContext(DefaultMappingContext, 0);
+		}
+	}
 }
 
 void APokaPokaECCCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	// アクションバインディングの設定
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
 
 		// ジャンプ
@@ -65,71 +81,41 @@ void APokaPokaECCCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 
 		// 移動
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &APokaPokaECCCharacter::Move);
-		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &APokaPokaECCCharacter::Look);
 
-		// 視点移動（※トップビュー固定の場合は実質機能しなくなりますが、入力自体は残しておきます）
-		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &APokaPokaECCCharacter::Look);
-	}
-	else
-	{
-		UE_LOG(LogPokaPokaECC, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
+		// ★インタラクト（コンポーネントの機能を呼び出す）
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &APokaPokaECCCharacter::Interact);
 	}
 }
 
 void APokaPokaECCCharacter::Move(const FInputActionValue& Value)
 {
-	// 入力値をVector2Dとして取得
 	FVector2D MovementVector = Value.Get<FVector2D>();
 
-	// 実際の移動処理へルーティング
-	DoMove(MovementVector.X, MovementVector.Y);
-}
-
-void APokaPokaECCCharacter::Look(const FInputActionValue& Value)
-{
-	// 入力値をVector2Dとして取得
-	FVector2D LookAxisVector = Value.Get<FVector2D>();
-
-	// 実際の視点移動処理へルーティング
-	DoLook(LookAxisVector.X, LookAxisVector.Y);
-}
-
-void APokaPokaECCCharacter::DoMove(float Right, float Forward)
-{
-	// コントローラーをPlayerControllerとして取得
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	if (Controller != nullptr)
 	{
-		// プレイヤーの現在のカメラ（レベルに置いた固定カメラ）の情報を取得
-		if (APlayerCameraManager* CameraManager = PC->PlayerCameraManager)
+		// 固定カメラ（CameraManager）の回転を基準に移動方向を決定
+		if (APlayerController* PC = Cast<APlayerController>(GetController()))
 		{
-			// カメラの向きを取得し、Z軸（ヨー）だけの回転にする
-			const FRotator CameraRotation = CameraManager->GetCameraRotation();
-			const FRotator YawRotation(0, CameraRotation.Yaw, 0);
+			if (APlayerCameraManager* CameraManager = PC->PlayerCameraManager)
+			{
+				const FRotator CameraRotation = CameraManager->GetCameraRotation();
+				const FRotator YawRotation(0, CameraRotation.Yaw, 0);
 
-			// カメラから見た前方ベクトルと右方ベクトルを計算
-			const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-			const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+				const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+				const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-			// 移動入力を追加
-			AddMovementInput(ForwardDirection, Forward);
-			AddMovementInput(RightDirection, Right);
+				AddMovementInput(ForwardDirection, MovementVector.Y);
+				AddMovementInput(RightDirection, MovementVector.X);
+			}
 		}
 	}
 }
 
-void APokaPokaECCCharacter::DoLook(float Yaw, float Pitch)
+void APokaPokaECCCharacter::Interact(const FInputActionValue& Value)
 {
-	
-}
-
-void APokaPokaECCCharacter::DoJumpStart()
-{
-	// キャラクターにジャンプを指示
-	Jump();
-}
-
-void APokaPokaECCCharacter::DoJumpEnd()
-{
-	// キャラクターにジャンプ終了を指示
-	StopJumping();
+	// キャラクター自身でロジックを持たず、コンポーネントに委託する
+	if (ItemHoldComp)
+	{
+		ItemHoldComp->PrimaryInteract();
+	}
 }
