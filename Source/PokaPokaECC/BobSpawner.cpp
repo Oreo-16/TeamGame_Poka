@@ -1,45 +1,75 @@
 #include "BobSpawner.h"
 #include "BobNPCCharacter.h"
 #include "Engine/World.h"
-#include "Components/SceneComponent.h" // ★追加
+#include "Components/SceneComponent.h"
+// ★追加: 入力を処理するためのインクルード
+#include "Components/InputComponent.h" 
+// ★追加: Bobを探し出すためのインクルード
+#include "Kismet/GameplayStatics.h" 
 
 ABobSpawner::ABobSpawner()
 {
     PrimaryActorTick.bCanEverTick = false;
-
-    // ★追加: 空のSceneComponentを作成し、このアクタのRootComponent（根元）に設定する
     DefaultRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultRoot"));
     RootComponent = DefaultRoot;
+
+    // ★追加: このアクタ（スポナー）が「プレイヤー0（ローカルプレイヤー）」の入力を直接受け取るように設定
+    AutoReceiveInput = EAutoReceiveInput::Player0;
 }
 
 void ABobSpawner::BeginPlay()
 {
     Super::BeginPlay();
 
-    // 今回はテストとして、ゲーム開始時に自動でスポーンさせる
     SpawnAndMoveBob();
+
+    // ★追加: アクタの入力コンポーネントが有効になったら、Enterキーの入力をバインドする
+    if (InputComponent)
+    {
+        InputComponent->BindKey(EKeys::Enter, IE_Pressed, this, &ABobSpawner::TestMakeBobLeave);
+    }
 }
 
 void ABobSpawner::SpawnAndMoveBob()
 {
-    if (!BobClassToSpawn)
-    {
-        return; // クラスが設定されていなければ何もしない
-    }
+    if (!BobClassToSpawn) return;
 
-    // スポナー自身の位置と回転を取得
     FVector SpawnLocation = GetActorLocation();
     FRotator SpawnRotation = GetActorRotation();
     FActorSpawnParameters SpawnParams;
     SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-    // Bobをスポーンさせる
     ABobNPCCharacter* SpawnedBob = GetWorld()->SpawnActor<ABobNPCCharacter>(BobClassToSpawn, SpawnLocation, SpawnRotation, SpawnParams);
 
     if (SpawnedBob)
     {
-        // TargetLocationはSpawnerからの相対座標になっているため、ワールド座標に変換して渡す
-        FVector WorldTargetLocation = GetTransform().TransformPosition(TargetLocation);
-        SpawnedBob->MoveToDestination(WorldTargetLocation);
+        TArray<FVector> WorldPathLocations;
+        for (FVector Loc : PathLocations)
+        {
+            WorldPathLocations.Add(GetTransform().TransformPosition(Loc));
+        }
+
+        FVector WorldExitLocation = GetTransform().TransformPosition(ExitLocation);
+
+        SpawnedBob->StartPathMovementWithDelay(WorldPathLocations, WorldExitLocation, 2.0f);
+    }
+}
+
+// ★追加: Enterキーを押した時の処理本体
+void ABobSpawner::TestMakeBobLeave()
+{
+    TArray<AActor*> FoundBobs;
+
+    // ワールド内にいる「ABobNPCCharacter」を全て探し出す
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABobNPCCharacter::StaticClass(), FoundBobs);
+
+    for (AActor* Actor : FoundBobs)
+    {
+        ABobNPCCharacter* Bob = Cast<ABobNPCCharacter>(Actor);
+        if (Bob)
+        {
+            // 見つけたBob全員に帰宅処理を実行させる
+            Bob->ReceiveFoodAndLeave();
+        }
     }
 }

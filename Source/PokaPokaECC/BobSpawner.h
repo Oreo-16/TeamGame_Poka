@@ -18,19 +18,21 @@ protected:
     virtual void BeginPlay() override;
 
 public:
-    // ★追加: アクタが位置情報を持てるようにするためのルートコンポーネント
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     USceneComponent* DefaultRoot;
 
-    // スポーンさせるBobのブループリントクラスをエディタで指定する用
     UPROPERTY(EditAnywhere, Category = "Spawn")
     TSubclassOf<ABobNPCCharacter> BobClassToSpawn;
 
-    // 歩かせる目的地の座標 (MakeEditWidgetでエディタ上に移動可能なひし形のピンが出ます)
     UPROPERTY(EditAnywhere, meta = (MakeEditWidget = true), Category = "Spawn")
-    FVector TargetLocation;
+    TArray<FVector> PathLocations;
 
-    // スポーン処理本体
+    UPROPERTY(EditAnywhere, meta = (MakeEditWidget = true), Category = "Spawn")
+    FVector ExitLocation;
+
     UFUNCTION(BlueprintCallable, Category = "Spawn")
     void SpawnAndMoveBob();
+
+    // ★追加: テスト用の関数（Enterキーを押したら呼ばれる）
+    void TestMakeBobLeave();
 };
