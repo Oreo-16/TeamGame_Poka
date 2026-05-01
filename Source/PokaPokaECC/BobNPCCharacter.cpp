@@ -47,6 +47,9 @@ void ABobNPCCharacter::Tick(float DeltaTime)
         // 出口に到着したら
         if (FVector::Dist(GetActorLocation(), TargetLoc) < 150.0f)
         {
+            // ★追加: 帰りきったのでSpawnerに通知を送る（これで次の客が生成される）
+            OnCustomerLeft.Broadcast();
+
             // キャラクターを消滅させる
             Destroy();
         }
@@ -91,10 +94,17 @@ void ABobNPCCharacter::MoveToNextPathPoint()
     {
         // 経由地を全て歩き終えたら「注文待ち」状態になる
         CurrentState = ECustomerState::Waiting;
+
+        // ★追加: Blueprintのイベントを呼び出し、アニメーションを再生させる
+        PlayWaitAnimation();
+
+        // ★追加: WaitTime秒後（例: 3秒後）に自動で帰宅処理を実行する
+        FTimerHandle WaitTimerHandle;
+        GetWorld()->GetTimerManager().SetTimer(WaitTimerHandle, this, &ABobNPCCharacter::ReceiveFoodAndLeave, WaitTime, false);
     }
 }
 
-// ★プレイヤーが料理を渡した時に呼ばれる処理
+// ★プレイヤーが料理を渡した時などに呼ばれる処理
 void ABobNPCCharacter::ReceiveFoodAndLeave()
 {
     // 状態を「帰宅」に変更し、出口へ向かわせる

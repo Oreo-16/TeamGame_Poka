@@ -4,7 +4,9 @@
 #include "GameFramework/Character.h"
 #include "BobNPCCharacter.generated.h"
 
-// ★追加: 客の「状態」を管理するリスト
+// ★追加: 客が帰りきったことをSpawnerに知らせるためのデリゲート（通知機能）
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCustomerLeftDelegate);
+
 UENUM(BlueprintType)
 enum class ECustomerState : uint8
 {
@@ -39,17 +41,27 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
     FVector ExitLocation;       // 帰る場所
 
+    // ★追加: 目的地に着いたときの待機時間（アニメーション再生時間）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI")
+    float WaitTime = 3.0f;
+
+    // ★追加: 次の客を呼ぶためのイベント通知用デリゲート
+    UPROPERTY(BlueprintAssignable, Category = "Event")
+    FOnCustomerLeftDelegate OnCustomerLeft;
+
     // --- AI移動関数 ---
     UFUNCTION(BlueprintCallable, Category = "AI")
     void MoveToDestination(FVector Destination);
 
-    // ★追加: スポナーから「経由地のリスト」と「帰り道」を受け取って移動を開始する
     UFUNCTION(BlueprintCallable, Category = "AI")
     void StartPathMovementWithDelay(TArray<FVector> InPathPoints, FVector InExitLocation, float DelayTime);
 
-    // ★追加: プレイヤーが料理を渡した時にBPから呼ぶ関数
     UFUNCTION(BlueprintCallable, Category = "Event")
     void ReceiveFoodAndLeave();
+
+    // ★追加: 目的地に着いたときに、Blueprintでアニメーションを再生させるためのイベント
+    UFUNCTION(BlueprintImplementableEvent, Category = "Animation")
+    void PlayWaitAnimation();
 
 private:
     // タイマーから呼び出される実行用関数
