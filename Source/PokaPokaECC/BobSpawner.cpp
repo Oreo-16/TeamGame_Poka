@@ -39,7 +39,7 @@ void ABobSpawner::SpawnAndMoveBob()
 
     if (SpawnedBob)
     {
-        // ★追加: この客が帰りきった（Destroy直前）ときに、再びこのSpawnAndMoveBob関数を呼んで次の客を生成する
+        // 客が帰りきった（Destroy直前）ときに、再びこのSpawnAndMoveBob関数を呼んで次の客を生成する
         SpawnedBob->OnCustomerLeft.AddDynamic(this, &ABobSpawner::SpawnAndMoveBob);
 
         TArray<FVector> WorldPathLocations;
@@ -57,7 +57,6 @@ void ABobSpawner::SpawnAndMoveBob()
 void ABobSpawner::TestMakeBobLeave()
 {
     TArray<AActor*> FoundBobs;
-
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABobNPCCharacter::StaticClass(), FoundBobs);
 
     for (AActor* Actor : FoundBobs)
