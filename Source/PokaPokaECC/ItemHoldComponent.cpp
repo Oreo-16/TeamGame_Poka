@@ -65,7 +65,8 @@ void UItemHoldComponent::PrimaryInteract()
     FVector Forward = OwnerCharacter->GetActorForwardVector();
     FVector OverlapCenter = Start + (Forward * (InteractDistance * 0.6f));
 
-    FCollisionShape Sphere = FCollisionShape::MakeSphere(70.0f);
+    //FCollisionShape Sphere = FCollisionShape::MakeSphere(70.0f);
+    FCollisionShape Sphere = FCollisionShape::MakeSphere(150.0f);
     FCollisionQueryParams Params;
     Params.AddIgnoredActor(OwnerCharacter);
 
@@ -145,6 +146,9 @@ void UItemHoldComponent::PrimaryInteract()
             }
 
             HeldItem->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+            // --- ここに重要修正：置くときはコリジョンを戻す ---
+            HeldItem->SetActorEnableCollision(true);
+
             PlaceTargetLocation = FoundCounter->GetActorLocation() + FVector(0.0f, 0.0f, 90.0f);
             PlaceTargetRotation = FRotator::ZeroRotator;
             if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
@@ -160,6 +164,8 @@ void UItemHoldComponent::PrimaryInteract()
         else
         {
             HeldItem->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+            // --- ここに重要修正：投げるときもコリジョンを戻す ---
+            HeldItem->SetActorEnableCollision(true);
             if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
             {
                 PrimComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
@@ -185,11 +191,15 @@ void UItemHoldComponent::PrimaryInteract()
                     AItemSpawner* Spawner = Cast<AItemSpawner>(HitActor);
                     if (Spawner)
                     {
-                        // スポナーからアイテムを生成して受け取る
-                        AActor* SpawnedItem = Spawner->SpawnItem();
-                        if (SpawnedItem)
+                        // 修正点：SpawnItem() ではなく RequestItem() を呼ぶ
+                        AActor* NewItem = Spawner->RequestItem();
+
+                        if (NewItem) // アイテムが返ってきた（調理完了 or 即時生成）場合のみ手に持つ
                         {
-                            HeldItem = SpawnedItem;
+                            HeldItem = NewItem;
+                            // 【修正】Sceneをルートにしても大丈夫なようにアクター全体をオフ
+                            HeldItem->SetActorEnableCollision(false);
+
                             if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
                             {
                                 PrimComp->SetSimulatePhysics(false);
@@ -197,8 +207,29 @@ void UItemHoldComponent::PrimaryInteract()
                             }
                             HeldItem->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::KeepWorldTransform, HandSocketName);
                             bIsItemSnapping = true;
-                            break; // 処理を完了してループを抜ける
+                            break;
                         }
+                        else
+                        {
+                            // アイテムがnullptrなら、調理開始などのログを出す（任意）
+                            UE_LOG(LogTemp, Log, TEXT("Spawner is busy or just started cooking..."));
+                        }
+
+
+                        // スポナーからアイテムを生成して受け取る
+                        //AActor* SpawnedItem = Spawner->SpawnItem();
+                        //if (SpawnedItem)
+                        //{
+                        //    HeldItem = SpawnedItem;
+                        //    if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
+                        //    {
+                        //        PrimComp->SetSimulatePhysics(false);
+                        //        PrimComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                        //    }
+                        //    HeldItem->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::KeepWorldTransform, HandSocketName);
+                        //    bIsItemSnapping = true;
+                        //    break; // 処理を完了してループを抜ける
+                        //}
                     }
                 }
                 // 2. 目の前のオブジェクトが「置かれているアイテム」だった場合
@@ -210,6 +241,9 @@ void UItemHoldComponent::PrimaryInteract()
                         PlacingItem = nullptr;
                     }
                     HeldItem = HitActor;
+                    // 【修正】Sceneをルートにしても大丈夫なようにアクター全体をオフ
+                    HeldItem->SetActorEnableCollision(false);
+
                     if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
                     {
                         PrimComp->SetSimulatePhysics(false);
