@@ -33,6 +33,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Spawn")
     void SpawnAndMoveBob();
 
-    // ★追加: テスト用の関数（Enterキーを押したら呼ばれる）
+    // テスト用の関数（Enterキー）
     void TestMakeBobLeave();
 };
