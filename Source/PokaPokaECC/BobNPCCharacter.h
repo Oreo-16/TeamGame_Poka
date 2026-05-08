@@ -41,6 +41,10 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
     FVector ExitLocation;
 
+    // --- 追加: お金を置く対象となるカウンター（台）の参照 ---
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shop")
+    AActor* TargetCounter;
+
     // トマトが当たってから歩き出すまでのリアクション（アニメーション）時間
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI")
     float ReactionTime = 2.5f;

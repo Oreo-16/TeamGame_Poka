@@ -13,6 +13,9 @@ ABobNPCCharacter::ABobNPCCharacter()
 
     CurrentState = ECustomerState::MovingToShop;
     CurrentPathIndex = 0;
+
+    // ’Ç‰Á: ‰Šú‰»
+    TargetCounter = nullptr;
 }
 
 void ABobNPCCharacter::BeginPlay()
