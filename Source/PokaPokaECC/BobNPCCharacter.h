@@ -4,13 +4,13 @@
 #include "GameFramework/Character.h"
 #include "BobNPCCharacter.generated.h"
 
-// ★追加: 客が帰りきったことをSpawnerに知らせるためのデリゲート（通知機能）
+// 客が帰りきったことをSpawnerに知らせるためのデリゲート
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCustomerLeftDelegate);
 
 UENUM(BlueprintType)
 enum class ECustomerState : uint8
 {
-    MovingToShop UMETA(DisplayName = "Moving To Shop"), // お店に向かっている（経由地）
+    MovingToShop UMETA(DisplayName = "Moving To Shop"), // お店に向かっている
     Waiting      UMETA(DisplayName = "Waiting"),        // 料理待ち
     Leaving      UMETA(DisplayName = "Leaving")         // 帰る
 };
@@ -35,17 +35,17 @@ public:
 
     // --- 経路データ ---
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
-    TArray<FVector> PathPoints; // 経由地のリスト
-    int32 CurrentPathIndex;     // 今何番目の経由地に向かっているか
+    TArray<FVector> PathPoints;
+    int32 CurrentPathIndex;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
-    FVector ExitLocation;       // 帰る場所
+    FVector ExitLocation;
 
-    // ★追加: 目的地に着いたときの待機時間（アニメーション再生時間）
+    // トマトが当たってから歩き出すまでのリアクション（アニメーション）時間
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI")
-    float WaitTime = 3.0f;
+    float ReactionTime = 2.5f;
 
-    // ★追加: 次の客を呼ぶためのイベント通知用デリゲート
+    // 次の客を呼ぶためのイベント通知用
     UPROPERTY(BlueprintAssignable, Category = "Event")
     FOnCustomerLeftDelegate OnCustomerLeft;
 
@@ -56,16 +56,20 @@ public:
     UFUNCTION(BlueprintCallable, Category = "AI")
     void StartPathMovementWithDelay(TArray<FVector> InPathPoints, FVector InExitLocation, float DelayTime);
 
+    // トマトが当たった時にBPから呼ぶ関数
     UFUNCTION(BlueprintCallable, Category = "Event")
     void ReceiveFoodAndLeave();
 
-    // ★追加: 目的地に着いたときに、Blueprintでアニメーションを再生させるためのイベント
+    // トマトが当たった時に、Blueprintでアニメーションを再生させるためのイベント
     UFUNCTION(BlueprintImplementableEvent, Category = "Animation")
-    void PlayWaitAnimation();
+    void PlayReactionAnimation();
 
 private:
-    // タイマーから呼び出される実行用関数
     UFUNCTION()
     void ExecutePathMovement();
     void MoveToNextPathPoint();
+
+    // アニメーション終了後に実際に歩き出すための関数
+    UFUNCTION()
+    void StartWalkingHome();
 };
