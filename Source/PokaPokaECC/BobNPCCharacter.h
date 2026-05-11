@@ -4,6 +4,9 @@
 #include "GameFramework/Character.h"
 #include "BobNPCCharacter.generated.h"
 
+// ★追加: 次の客を呼ぶためのデリゲート（イベント）宣言
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCustomerLeftDelegate);
+
 // ★追加: 客の「状態」を管理するリスト
 UENUM(BlueprintType)
 enum class ECustomerState : uint8
@@ -37,8 +40,7 @@ public:
     int32 CurrentPathIndex;     // 今何番目の経由地に向かっているか
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
-<<<<<<< HEAD
-    FVector ExitLocation;
+    FVector ExitLocation;       // 帰る場所
 
     // トマトが当たってから歩き出すまでのリアクション（アニメーション）時間
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI")
@@ -47,9 +49,6 @@ public:
     // 次の客を呼ぶためのイベント通知用
     UPROPERTY(BlueprintAssignable, Category = "Event")
     FOnCustomerLeftDelegate OnCustomerLeft;
-=======
-    FVector ExitLocation;       // 帰る場所
->>>>>>> parent of d21b517 (Merge branch 'main' into nishida22)
 
     // --- AI移動関数 ---
     UFUNCTION(BlueprintCallable, Category = "AI")
