@@ -59,83 +59,167 @@ void UItemHoldComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 
 void UItemHoldComponent::PrimaryInteract()
 {
-	if (!OwnerCharacter) return;
+    if (!OwnerCharacter) return;
 
-	FVector Start = OwnerCharacter->GetActorLocation();
-	FVector Forward = OwnerCharacter->GetActorForwardVector();
-	FVector OverlapCenter = Start + (Forward * (InteractDistance * 0.6f));
-	FCollisionShape Sphere = FCollisionShape::MakeSphere(70.0f);
+    FVector Start = OwnerCharacter->GetActorLocation();
+    FVector Forward = OwnerCharacter->GetActorForwardVector();
+    FVector OverlapCenter = Start + (Forward * (InteractDistance * 0.6f));
 
-	FCollisionQueryParams Params;
-	Params.AddIgnoredActor(OwnerCharacter);
-	if (HeldItem) Params.AddIgnoredActor(HeldItem);
+    FCollisionShape Sphere = FCollisionShape::MakeSphere(70.0f);
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(OwnerCharacter);
 
-	TArray<FOverlapResult> Overlaps;
-	GetWorld()->OverlapMultiByChannel(Overlaps, OverlapCenter, FQuat::Identity, ECC_Visibility, Sphere, Params);
+    if (HeldItem)
+    {
+        Params.AddIgnoredActor(HeldItem);
+    }
 
-	if (HeldItem)
-	{
-		AActor* FoundCounter = nullptr;
-		for (const FOverlapResult& Overlap : Overlaps)
-		{
-			if (Overlap.GetActor() && Overlap.GetActor()->ActorHasTag("Counter"))
-			{
-				FoundCounter = Overlap.GetActor();
-				break;
-			}
-		}
+    TArray<FOverlapResult> Overlaps;
+    GetWorld()->OverlapMultiByChannel(Overlaps, OverlapCenter, FQuat::Identity, ECC_Visibility, Sphere, Params);
 
-		if (FoundCounter)
-		{
-			HeldItem->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-			PlaceTargetLocation = FoundCounter->GetActorLocation() + FVector(0.0f, 0.0f, 90.0f);
-			PlaceTargetRotation = FRotator::ZeroRotator;
+    if (HeldItem)
+    {
+        AActor* FoundCounter = nullptr;
+        AActor* FoundTrashCan = nullptr; // 【追加】ごみ箱を探すための変数
 
-			if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
-			{
-				PrimComp->SetSimulatePhysics(false);
-				PrimComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-			}
+        // 目の前に何があるか探す
+        for (const FOverlapResult& Overlap : Overlaps)
+        {
+            AActor* HitActor = Overlap.GetActor();
+            if (HitActor)
+            {
+                // 1. ごみ箱を見つけた場合優先！
+                if (HitActor->ActorHasTag("TrashCan"))
+                {
+                    FoundTrashCan = HitActor;
+                    break;
+                }
+                // 2. カウンターを見つけた場合
+                else if (HitActor->ActorHasTag("Counter"))
+                {
+                    FoundCounter = HitActor;
+                    break;
+                }
+            }
+        }
 
-			PlacingItem = HeldItem;
-			bIsItemPlacing = true;
-			HeldItem = nullptr;
-			bIsItemSnapping = false;
-		}
-		else
-		{
-			// 投げ飛ばし
-			HeldItem->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-			if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
-			{
-				PrimComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-				PrimComp->SetSimulatePhysics(true);
-				FVector TossDir = (Forward + FVector(0, 0, 0.5f)).GetSafeNormal();
-				PrimComp->AddImpulse(TossDir * 300.0f * PrimComp->GetMass());
-			}
-			HeldItem = nullptr;
-			bIsItemSnapping = false;
-		}
-	}
-	else
-	{
-		for (const FOverlapResult& Overlap : Overlaps)
-		{
-			AActor* HitActor = Overlap.GetActor();
-			if (HitActor && HitActor->ActorHasTag("Holdable"))
-			{
-				if (HitActor == PlacingItem) { bIsItemPlacing = false; PlacingItem = nullptr; }
+        // ごみ箱に向かってボタンを押した時の処理
+        if (FoundTrashCan)
+        {
+            HeldItem->Destroy(); // アイテムを世界から完全に消し去る！
+            HeldItem = nullptr;  // 手持ちを空にする
+            bIsItemSnapping = false;
+            UE_LOG(LogTemp, Warning, TEXT("アイテムをごみ箱に捨てました！"));
+        }
+        // カウンターに対する処理（先ほど作った重複チェック入り）
+        else if (FoundCounter)
+        {
+            // 置く予定の座標を計算
+            FVector TargetLoc = FoundCounter->GetActorLocation() + FVector(0.0f, 0.0f, 90.0f);
 
-				HeldItem = HitActor;
-				if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
-				{
-					PrimComp->SetSimulatePhysics(false);
-					PrimComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-				}
-				HeldItem->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::KeepWorldTransform, HandSocketName);
-				bIsItemSnapping = true;
-				break;
-			}
-		}
-	}
+            // 置く場所にすでにアイテムがないかチェックする
+            FCollisionShape CheckSphere = FCollisionShape::MakeSphere(20.0f); // チェック用の小さな球
+            FCollisionQueryParams CheckParams;
+            CheckParams.AddIgnoredActor(OwnerCharacter); // 自分は無視
+            CheckParams.AddIgnoredActor(HeldItem);       // 今手に持っているアイテムも無視
+
+            bool bIsOccupied = false; // すでに場所が埋まっているかのフラグ
+            TArray<FOverlapResult> CheckOverlaps;
+            GetWorld()->OverlapMultiByChannel(CheckOverlaps, TargetLoc, FQuat::Identity, ECC_Visibility, CheckSphere, CheckParams);
+
+            // 置く予定の場所に何かあったら、それがアイテムか確認
+            for (const FOverlapResult& Overlap : CheckOverlaps)
+            {
+                if (Overlap.GetActor() && Overlap.GetActor()->ActorHasTag("Holdable"))
+                {
+                    bIsOccupied = true; // アイテムがあった！
+                    break;
+                }
+            }
+
+            // もしすでにアイテムが置かれていたら、ここで処理を中断（置かない）
+            if (bIsOccupied)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("ここにはすでにアイテムが置かれています！"));
+                return;
+            }
+
+            HeldItem->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+            PlaceTargetLocation = FoundCounter->GetActorLocation() + FVector(0.0f, 0.0f, 90.0f);
+            PlaceTargetRotation = FRotator::ZeroRotator;
+            if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
+            {
+                PrimComp->SetSimulatePhysics(false);
+                PrimComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+            }
+            PlacingItem = HeldItem;
+            bIsItemPlacing = true;
+            HeldItem = nullptr;
+            bIsItemSnapping = false;
+        }
+        else
+        {
+            HeldItem->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+            if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
+            {
+                PrimComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+                PrimComp->SetSimulatePhysics(true);
+                FVector TossDir = (Forward + FVector(0, 0, 0.5f)).GetSafeNormal();
+                PrimComp->AddImpulse(TossDir * 300.0f * PrimComp->GetMass());
+            }
+            HeldItem = nullptr;
+            bIsItemSnapping = false;
+        }
+    }
+    else
+    {
+        // 手ぶらの場合の処理（アイテムを拾う、またはスポナーから取り出す）
+        for (const FOverlapResult& Overlap : Overlaps)
+        {
+            AActor* HitActor = Overlap.GetActor();
+            if (HitActor)
+            {
+                // 1. 目の前のオブジェクトが「スポナー」だった場合
+                if (HitActor->ActorHasTag("Spawner"))
+                {
+                    AItemSpawner* Spawner = Cast<AItemSpawner>(HitActor);
+                    if (Spawner)
+                    {
+                        // スポナーからアイテムを生成して受け取る
+                        AActor* SpawnedItem = Spawner->SpawnItem();
+                        if (SpawnedItem)
+                        {
+                            HeldItem = SpawnedItem;
+                            if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
+                            {
+                                PrimComp->SetSimulatePhysics(false);
+                                PrimComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                            }
+                            HeldItem->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::KeepWorldTransform, HandSocketName);
+                            bIsItemSnapping = true;
+                            break; // 処理を完了してループを抜ける
+                        }
+                    }
+                }
+                // 2. 目の前のオブジェクトが「置かれているアイテム」だった場合
+                else if (HitActor->ActorHasTag("Holdable"))
+                {
+                    if (HitActor == PlacingItem)
+                    {
+                        bIsItemPlacing = false;
+                        PlacingItem = nullptr;
+                    }
+                    HeldItem = HitActor;
+                    if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
+                    {
+                        PrimComp->SetSimulatePhysics(false);
+                        PrimComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                    }
+                    HeldItem->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::KeepWorldTransform, HandSocketName);
+                    bIsItemSnapping = true;
+                    break; // 処理を完了してループを抜ける
+                }
+            }
+        }
+    }
 }
