@@ -43,15 +43,12 @@ void ABobSpawner::SpawnAndMoveBob()
 
     if (SpawnedBob)
     {
-<<<<<<< HEAD
         // --- 追加: Spawnerで設定したカウンターの参照をBobに渡す ---
         SpawnedBob->TargetCounter = this->TargetCounter;
 
         // 客が帰りきった（Destroy直前）ときに、再びこのSpawnAndMoveBob関数を呼んで次の客を生成する
         SpawnedBob->OnCustomerLeft.AddDynamic(this, &ABobSpawner::SpawnAndMoveBob);
 
-=======
->>>>>>> parent of d21b517 (Merge branch 'main' into nishida22)
         TArray<FVector> WorldPathLocations;
         for (FVector Loc : PathLocations)
         {
