@@ -1,98 +1,150 @@
 #include "CookingStation.h"
-#include "TimerManager.h" // タイマー機能を使うために必要
+#include "TimerManager.h"
 #include "Engine/World.h"
 
-// 初期設定
 ACookingStation::ACookingStation()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	// メッシュとアイテム置き場（ソケット）の作成
 	StationMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StationMesh"));
 	RootComponent = StationMesh;
 
-	ItemSocket = CreateDefaultSubobject<USceneComponent>(TEXT("ItemSocket"));
-	ItemSocket->SetupAttachment(RootComponent);
-	ItemSocket->SetRelativeLocation(FVector(0.0f, 0.0f, 50.0f)); // コンロの少し上に設定
+	// ソケット1（左用）の作成
+	ItemSocket1 = CreateDefaultSubobject<USceneComponent>(TEXT("ItemSocket1"));
+	ItemSocket1->SetupAttachment(RootComponent);
+	ItemSocket1->SetRelativeLocation(FVector(0.0f, -30.0f, 50.0f));
 
-	// プレイヤーが判別できるようにタグをつける
+	// ソケット2（右用）の作成
+	ItemSocket2 = CreateDefaultSubobject<USceneComponent>(TEXT("ItemSocket2"));
+	ItemSocket2->SetupAttachment(RootComponent);
+	ItemSocket2->SetRelativeLocation(FVector(0.0f, 30.0f, 50.0f));
+
 	Tags.Add(FName("CookingStation"));
 
-	// デフォルト設定
 	CookTime = 5.0f;
 	BurnTime = 5.0f;
-	CurrentState = ECookingState::Empty;
-	CurrentItem = nullptr;
+
+	CurrentState1 = ECookingState::Empty;
+	CurrentState2 = ECookingState::Empty;
+	CurrentItem1 = nullptr;
+	CurrentItem2 = nullptr;
 }
 
-// 1. 食材を置いた時の処理
+// 食材を置く処理
 bool ACookingStation::PlaceItem(AActor* ItemToPlace)
 {
-	// すでに使われている、またはアイテムが無い場合は拒否
-	if (CurrentState != ECookingState::Empty || ItemToPlace == nullptr) return false;
+	if (ItemToPlace == nullptr) return false;
 
-	CurrentItem = ItemToPlace;
+	// まず左（ソケット1）が空いているかチェック！
+	if (CurrentState1 == ECookingState::Empty)
+	{
+		CurrentItem1 = ItemToPlace;
+		CurrentItem1->SetActorLocationAndRotation(ItemSocket1->GetComponentLocation(), ItemSocket1->GetComponentRotation());
+		CurrentItem1->AttachToComponent(ItemSocket1, FAttachmentTransformRules::KeepWorldTransform);
+		CurrentState1 = ECookingState::Cooking;
+		GetWorldTimerManager().SetTimer(CookingTimerHandle1, this, &ACookingStation::OnCookingFinished1, CookTime, false);
+		return true;
+	}
+	// 左が埋まっていたら、右（ソケット2）が空いているかチェック！
+	else if (CurrentState2 == ECookingState::Empty)
+	{
+		CurrentItem2 = ItemToPlace;
+		CurrentItem2->SetActorLocationAndRotation(ItemSocket2->GetComponentLocation(), ItemSocket2->GetComponentRotation());
+		CurrentItem2->AttachToComponent(ItemSocket2, FAttachmentTransformRules::KeepWorldTransform);
+		CurrentState2 = ECookingState::Cooking;
+		GetWorldTimerManager().SetTimer(CookingTimerHandle2, this, &ACookingStation::OnCookingFinished2, CookTime, false);
+		return true;
+	}
 
-	// 食材をソケットの位置に吸い付かせる
-	CurrentItem->SetActorLocationAndRotation(ItemSocket->GetComponentLocation(), ItemSocket->GetComponentRotation());
-	CurrentItem->AttachToComponent(ItemSocket, FAttachmentTransformRules::KeepWorldTransform);
-
-	// 調理開始！状態を変更し、完成タイマーをセットする
-	CurrentState = ECookingState::Cooking;
-	GetWorldTimerManager().SetTimer(CookingTimerHandle, this, &ACookingStation::OnCookingFinished, CookTime, false);
-
-	UE_LOG(LogTemp, Warning, TEXT("調理スタート！"));
-	return true;
+	// 両方埋まっている場合は置けない
+	return false;
 }
 
-// 2. 完成した時の処理（タイマーから呼ばれる）
-void ACookingStation::OnCookingFinished()
+// --- ソケット1のタイマー処理 ---
+void ACookingStation::OnCookingFinished1()
 {
-	if (CurrentItem) CurrentItem->Destroy(); // 生の食材を消す
-
-	// 完成品（焼けたお肉など）を出現させる
+	if (CurrentItem1) CurrentItem1->Destroy();
 	if (CookedItemClass)
 	{
-		CurrentItem = GetWorld()->SpawnActor<AActor>(CookedItemClass, ItemSocket->GetComponentLocation(), ItemSocket->GetComponentRotation());
-		CurrentItem->AttachToComponent(ItemSocket, FAttachmentTransformRules::KeepWorldTransform);
+		CurrentItem1 = GetWorld()->SpawnActor<AActor>(CookedItemClass, ItemSocket1->GetComponentLocation(), ItemSocket1->GetComponentRotation());
+		CurrentItem1->AttachToComponent(ItemSocket1, FAttachmentTransformRules::KeepWorldTransform);
 	}
-
-	CurrentState = ECookingState::Done;
-	UE_LOG(LogTemp, Warning, TEXT("料理完成！早く取らないと焦げる！"));
-
-	// さらに放置した時の「焦げタイマー」をスタートする
-	GetWorldTimerManager().SetTimer(CookingTimerHandle, this, &ACookingStation::OnBurnt, BurnTime, false);
+	CurrentState1 = ECookingState::Done;
+	GetWorldTimerManager().SetTimer(CookingTimerHandle1, this, &ACookingStation::OnBurnt1, BurnTime, false);
 }
 
-// 3. 焦げた時の処理（タイマーから呼ばれる）
-void ACookingStation::OnBurnt()
+void ACookingStation::OnBurnt1()
 {
-	if (CurrentItem) CurrentItem->Destroy(); // 完成品を消す
-
-	// 焦げたゴミを出現させる
+	if (CurrentItem1) CurrentItem1->Destroy();
 	if (BurntItemClass)
 	{
-		CurrentItem = GetWorld()->SpawnActor<AActor>(BurntItemClass, ItemSocket->GetComponentLocation(), ItemSocket->GetComponentRotation());
-		CurrentItem->AttachToComponent(ItemSocket, FAttachmentTransformRules::KeepWorldTransform);
+		CurrentItem1 = GetWorld()->SpawnActor<AActor>(BurntItemClass, ItemSocket1->GetComponentLocation(), ItemSocket1->GetComponentRotation());
+		CurrentItem1->AttachToComponent(ItemSocket1, FAttachmentTransformRules::KeepWorldTransform);
 	}
-
-	CurrentState = ECookingState::Burnt;
-	UE_LOG(LogTemp, Error, TEXT("あーあ、焦げちゃった..."));
+	CurrentState1 = ECookingState::Burnt;
 }
 
-// 4. プレイヤーがアイテムを取り出す時の処理
+// --- ソケット2のタイマー処理 ---
+void ACookingStation::OnCookingFinished2()
+{
+	if (CurrentItem2) CurrentItem2->Destroy();
+	if (CookedItemClass)
+	{
+		CurrentItem2 = GetWorld()->SpawnActor<AActor>(CookedItemClass, ItemSocket2->GetComponentLocation(), ItemSocket2->GetComponentRotation());
+		CurrentItem2->AttachToComponent(ItemSocket2, FAttachmentTransformRules::KeepWorldTransform);
+	}
+	CurrentState2 = ECookingState::Done;
+	GetWorldTimerManager().SetTimer(CookingTimerHandle2, this, &ACookingStation::OnBurnt2, BurnTime, false);
+}
+
+void ACookingStation::OnBurnt2()
+{
+	if (CurrentItem2) CurrentItem2->Destroy();
+	if (BurntItemClass)
+	{
+		CurrentItem2 = GetWorld()->SpawnActor<AActor>(BurntItemClass, ItemSocket2->GetComponentLocation(), ItemSocket2->GetComponentRotation());
+		CurrentItem2->AttachToComponent(ItemSocket2, FAttachmentTransformRules::KeepWorldTransform);
+	}
+	CurrentState2 = ECookingState::Burnt;
+}
+
+// 食材を取り出す処理
 AActor* ACookingStation::RetrieveItem()
 {
-	// 空っぽ、または調理中（まだ生）の時は取り出せないようにする
-	if (CurrentState == ECookingState::Empty || CurrentState == ECookingState::Cooking) return nullptr;
+	// 1. まず「完成品（Done）」を優先して探す
+	if (CurrentState1 == ECookingState::Done)
+	{
+		AActor* ItemToReturn = CurrentItem1;
+		GetWorldTimerManager().ClearTimer(CookingTimerHandle1);
+		CurrentItem1 = nullptr;
+		CurrentState1 = ECookingState::Empty;
+		return ItemToReturn;
+	}
+	else if (CurrentState2 == ECookingState::Done)
+	{
+		AActor* ItemToReturn = CurrentItem2;
+		GetWorldTimerManager().ClearTimer(CookingTimerHandle2);
+		CurrentItem2 = nullptr;
+		CurrentState2 = ECookingState::Empty;
+		return ItemToReturn;
+	}
 
-	AActor* ItemToReturn = CurrentItem;
+	// 2. 完成品がなければ「焦げたもの（Burnt）」を探す
+	if (CurrentState1 == ECookingState::Burnt)
+	{
+		AActor* ItemToReturn = CurrentItem1;
+		CurrentItem1 = nullptr;
+		CurrentState1 = ECookingState::Empty;
+		return ItemToReturn;
+	}
+	else if (CurrentState2 == ECookingState::Burnt)
+	{
+		AActor* ItemToReturn = CurrentItem2;
+		CurrentItem2 = nullptr;
+		CurrentState2 = ECookingState::Empty;
+		return ItemToReturn;
+	}
 
-	// 取り出したので、焦げタイマーをストップして安全にする！
-	GetWorldTimerManager().ClearTimer(CookingTimerHandle);
-
-	CurrentItem = nullptr;
-	CurrentState = ECookingState::Empty; // 空っぽ状態に戻す
-
-	return ItemToReturn;
+	// どちらも調理中や空っぽなら何も取り出せない
+	return nullptr;
 }

@@ -2,10 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-// ↓ 前回のエラーを教訓に、必ず .generated.h が一番下になるように注意してください！
 #include "CookingStation.generated.h"
 
-// 調理の状態を表すリスト（BPでも使えるようにする）
 UENUM(BlueprintType)
 enum class ECookingState : uint8
 {
@@ -24,49 +22,54 @@ public:
 	ACookingStation();
 
 protected:
-	// --- 見た目と置き場所の設定 ---
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	class UStaticMeshComponent* StationMesh;
 
+	// --- 【変更】ソケットを2つに増やす ---
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	class USceneComponent* ItemSocket; // 食材がポンッと乗る場所（基準点）
+	class USceneComponent* ItemSocket1;
 
-	// --- 調理時間とアイテムの設定（BPで自由に変更可能） ---
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings")
-	float CookTime; // 料理が完成するまでの時間（秒）
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings")
-	float BurnTime; // 完成後、放置すると焦げるまでの時間（秒）
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	class USceneComponent* ItemSocket2;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings")
-	TSubclassOf<AActor> CookedItemClass; // 完成した時に出現させるアイテム
+	float CookTime;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings")
-	TSubclassOf<AActor> BurntItemClass; // 焦げた時に出現させるアイテム（ゴミ）
+	float BurnTime;
 
-	// --- 現在の状態管理 ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings")
+	TSubclassOf<AActor> CookedItemClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings")
+	TSubclassOf<AActor> BurntItemClass;
+
+	// --- 【変更】状態管理とタイマーを2つに増やす ---
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking State")
-	ECookingState CurrentState;
+	ECookingState CurrentState1;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking State")
-	AActor* CurrentItem; // 今乗っているアイテム本体
+	ECookingState CurrentState2;
 
-	// タイマーを管理するための変数
-	FTimerHandle CookingTimerHandle;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking State")
+	AActor* CurrentItem1;
 
-	// --- 内部処理（時間が来た時に呼ばれる） ---
-	void OnCookingFinished();
-	void OnBurnt();
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking State")
+	AActor* CurrentItem2;
+
+	FTimerHandle CookingTimerHandle1;
+	FTimerHandle CookingTimerHandle2;
+
+	// タイマーから呼ばれる関数も1と2に分ける
+	void OnCookingFinished1();
+	void OnBurnt1();
+	void OnCookingFinished2();
+	void OnBurnt2();
 
 public:
-	// プレイヤーがアクセスするための関数
 	UFUNCTION(BlueprintCallable, Category = "Cooking")
-	bool PlaceItem(AActor* ItemToPlace); // 食材を置く
+	bool PlaceItem(AActor* ItemToPlace);
 
 	UFUNCTION(BlueprintCallable, Category = "Cooking")
-	AActor* RetrieveItem(); // 出来上がった食材を取り出す
-
-	// 現在の状態を確認するための便利関数
-	UFUNCTION(BlueprintCallable, Category = "Cooking")
-	ECookingState GetCurrentState() const { return CurrentState; }
+	AActor* RetrieveItem();
 };
