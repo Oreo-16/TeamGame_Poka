@@ -3,6 +3,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
+#include "CookingStation.h"
 
 UItemHoldComponent::UItemHoldComponent()
 {
@@ -80,7 +81,8 @@ void UItemHoldComponent::PrimaryInteract()
     if (HeldItem)
     {
         AActor* FoundCounter = nullptr;
-        AActor* FoundTrashCan = nullptr; // 【追加】ごみ箱を探すための変数
+        AActor* FoundTrashCan = nullptr; 
+        AActor* FoundCookingStation = nullptr;
 
         // 目の前に何があるか探す
         for (const FOverlapResult& Overlap : Overlaps)
@@ -88,28 +90,32 @@ void UItemHoldComponent::PrimaryInteract()
             AActor* HitActor = Overlap.GetActor();
             if (HitActor)
             {
-                // 1. ごみ箱を見つけた場合優先！
-                if (HitActor->ActorHasTag("TrashCan"))
-                {
-                    FoundTrashCan = HitActor;
-                    break;
-                }
-                // 2. カウンターを見つけた場合
-                else if (HitActor->ActorHasTag("Counter"))
-                {
-                    FoundCounter = HitActor;
-                    break;
-                }
+                if (HitActor->ActorHasTag("TrashCan")) { FoundTrashCan = HitActor; break; }
+                else if (HitActor->ActorHasTag("CookingStation")) { FoundCookingStation = HitActor; break; } // 【追加】
+                else if (HitActor->ActorHasTag("Counter")) { FoundCounter = HitActor; break; }
             }
         }
 
-        // ごみ箱に向かってボタンを押した時の処理
         if (FoundTrashCan)
         {
-            HeldItem->Destroy(); // アイテムを世界から完全に消し去る！
-            HeldItem = nullptr;  // 手持ちを空にする
+            HeldItem->Destroy();
+            HeldItem = nullptr;
             bIsItemSnapping = false;
-            UE_LOG(LogTemp, Warning, TEXT("アイテムをごみ箱に捨てました！"));
+        }
+        else if (FoundCookingStation) // 【追加】コンロ等にアイテムをセットする処理
+        {
+            ACookingStation* Station = Cast<ACookingStation>(FoundCookingStation);
+            // StationのPlaceItem関数を呼び出し、成功したら手持ちを空にする
+            if (Station && Station->PlaceItem(HeldItem))
+            {
+                if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
+                {
+                    PrimComp->SetSimulatePhysics(false);
+                    PrimComp->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 調理中は触れなくする
+                }
+                HeldItem = nullptr;
+                bIsItemSnapping = false;
+            }
         }
         // カウンターに対する処理（先ほど作った重複チェック入り）
         else if (FoundCounter)
@@ -173,19 +179,16 @@ void UItemHoldComponent::PrimaryInteract()
     }
     else
     {
-        // 手ぶらの場合の処理（アイテムを拾う、またはスポナーから取り出す）
         for (const FOverlapResult& Overlap : Overlaps)
         {
             AActor* HitActor = Overlap.GetActor();
             if (HitActor)
             {
-                // 1. 目の前のオブジェクトが「スポナー」だった場合
                 if (HitActor->ActorHasTag("Spawner"))
                 {
                     AItemSpawner* Spawner = Cast<AItemSpawner>(HitActor);
                     if (Spawner)
                     {
-                        // スポナーからアイテムを生成して受け取る
                         AActor* SpawnedItem = Spawner->SpawnItem();
                         if (SpawnedItem)
                         {
@@ -197,7 +200,28 @@ void UItemHoldComponent::PrimaryInteract()
                             }
                             HeldItem->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::KeepWorldTransform, HandSocketName);
                             bIsItemSnapping = true;
-                            break; // 処理を完了してループを抜ける
+                            break;
+                        }
+                    }
+                }
+                else if (HitActor->ActorHasTag("CookingStation")) // 【追加】コンロ等から完成品を取り出す処理
+                {
+                    ACookingStation* Station = Cast<ACookingStation>(HitActor);
+                    if (Station)
+                    {
+                        // 器具からアイテムを取り出す（生焼けの場合はnullptrが返ってくる）
+                        AActor* RetrievedItem = Station->RetrieveItem();
+                        if (RetrievedItem)
+                        {
+                            HeldItem = RetrievedItem; // 取り出したものを手に持つ
+                            if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
+                            {
+                                PrimComp->SetSimulatePhysics(false);
+                                PrimComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                            }
+                            HeldItem->AttachToComponent(OwnerCharacter->GetMesh(), FAttachmentTransformRules::KeepWorldTransform, HandSocketName);
+                            bIsItemSnapping = true;
+                            break;
                         }
                     }
                 }
