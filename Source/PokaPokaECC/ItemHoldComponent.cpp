@@ -1,7 +1,6 @@
 #include "ItemHoldComponent.h"
 #include "GameFramework/Character.h"
 #include "Components/PrimitiveComponent.h"
-#include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
 
@@ -14,28 +13,6 @@ void UItemHoldComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	OwnerCharacter = Cast<ACharacter>(GetOwner());
-    // ハイライト用のメッシュコンポーネントを動的に作成してキャラクターにアタッチ
-    if (OwnerCharacter)
-    {
-        GridHighlightMesh = NewObject<UStaticMeshComponent>(OwnerCharacter, TEXT("GridHighlightMesh"));
-        if (GridHighlightMesh)
-        {
-            GridHighlightMesh->RegisterComponent();
-            GridHighlightMesh->AttachToComponent(OwnerCharacter->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
-            GridHighlightMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision); // 衝突判定はオフ
-            GridHighlightMesh->SetHiddenInGame(true); // 最初は非表示
-
-            // BPで設定されたメッシュとマテリアルを適用
-            if (HighlightMeshAsset)
-            {
-                GridHighlightMesh->SetStaticMesh(HighlightMeshAsset);
-            }
-            if (HighlightMaterial)
-            {
-                GridHighlightMesh->SetMaterial(0, HighlightMaterial);
-            }
-        }
-    }
 }
 
 void UItemHoldComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -78,93 +55,6 @@ void UItemHoldComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 			PlacingItem = nullptr;
 		}
 	}
-    // 毎フレーム、グリッドのハイライト位置を更新
-    UpdateGridHighlight();
-}
-
-// ハイライト表示用の関数
-void UItemHoldComponent::UpdateGridHighlight()
-{
-    // アイテムを持っていない、または配置移動中の場合は非表示にして処理終了
-    if (!HeldItem || bIsItemSnapping || bIsItemPlacing || !OwnerCharacter || !GridHighlightMesh)
-    {
-        if (GridHighlightMesh) GridHighlightMesh->SetHiddenInGame(true);
-        bCanPlaceOnGrid = false;
-        return;
-    }
-
-    // 1. まずキャラクターの目の前の座標を基準点とする
-    FVector Start = OwnerCharacter->GetActorLocation();
-    FVector Forward = OwnerCharacter->GetActorForwardVector();
-    FVector TargetBase = Start + (Forward * InteractDistance);
-
-    // 2. 先にXとYをグリッドサイズにスナップ（吸着）させる
-    float SnappedX = FMath::GridSnap(TargetBase.X, GridSize);
-    float SnappedY = FMath::GridSnap(TargetBase.Y, GridSize);
-
-    // 3. スナップしたグリッドの「上空から真下」に向かってライントレースを落とす
-    // Start.Z + 200.0f : キャラクターより少し高い位置から落とすことで、高い机も検知可能にする
-    FVector TraceStart = FVector(SnappedX, SnappedY, Start.Z + 200.0f);
-    FVector TraceEnd = FVector(SnappedX, SnappedY, Start.Z - 500.0f);
-
-    FHitResult HitResult;
-    FCollisionQueryParams TraceParams;
-    TraceParams.AddIgnoredActor(OwnerCharacter);
-    TraceParams.AddIgnoredActor(HeldItem);
-
-    // 真下に向かって判定を飛ばし、最初に見つかった「一番高いオブジェクト」を取得
-    if (GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, TraceParams))
-    {
-        // ★変更: 面が上向きかどうかに加え、「ヒットした高さが、キャラクターの中心(Start.Z)＋上限値以下か」をチェック
-        if (HitResult.ImpactNormal.Z > 0.5f && (HitResult.ImpactPoint.Z <= Start.Z + MaxPlacementHeight))
-        {
-            // ヒットしたZ座標（高さ）を使って最終的な配置位置を決定
-            FVector SnappedLocation = FVector(SnappedX, SnappedY, HitResult.ImpactPoint.Z + PlacementZOffset);
-
-            // 配置予定の空間にすでに他のトマトなどがないかチェック
-            FCollisionShape CheckSphere = FCollisionShape::MakeSphere(20.0f);
-            bool bIsOccupied = false;
-            TArray<FOverlapResult> CheckOverlaps;
-
-            // 土台（机や床）自体はアイテムと見なさないようチェックから除外する
-            FCollisionQueryParams OverlapParams = TraceParams;
-            if (HitResult.GetActor())
-            {
-                OverlapParams.AddIgnoredActor(HitResult.GetActor());
-            }
-
-            GetWorld()->OverlapMultiByChannel(CheckOverlaps, SnappedLocation, FQuat::Identity, ECC_Visibility, CheckSphere, OverlapParams);
-
-            for (const FOverlapResult& OverlapCheck : CheckOverlaps)
-            {
-                // 除外した土台以外の「Holdable」アイテムがそこに存在していれば置けない
-                if (OverlapCheck.GetActor() && OverlapCheck.GetActor()->ActorHasTag("Holdable"))
-                {
-                    bIsOccupied = true;
-                    break;
-                }
-            }
-
-            // 空間が空いていればハイライトを表示して配置可能にする
-            if (!bIsOccupied)
-            {
-                bCanPlaceOnGrid = true;
-                CurrentGridTargetLocation = SnappedLocation;
-
-                // 向きも東西南北（90度）にスナップさせる
-                float SnappedYaw = FMath::RoundToFloat(OwnerCharacter->GetActorRotation().Yaw / 90.0f) * 90.0f;
-                CurrentGridTargetRotation = FRotator(0.0f, SnappedYaw, 0.0f);
-
-                GridHighlightMesh->SetWorldLocationAndRotation(CurrentGridTargetLocation, CurrentGridTargetRotation);
-                GridHighlightMesh->SetHiddenInGame(false);
-                return;
-            }
-        }
-    }
-
-    // ヒットしなかった、すでにアイテムがある、または【高すぎる場所（冷蔵庫など）】の場合は非表示
-    bCanPlaceOnGrid = false;
-    GridHighlightMesh->SetHiddenInGame(true);
 }
 
 void UItemHoldComponent::PrimaryInteract()
@@ -269,39 +159,16 @@ void UItemHoldComponent::PrimaryInteract()
         }
         else
         {
-            // 何もない空間の場合、Tickで計算済みの座標（bCanPlaceOnGrid）を使って配置する
-            if (bCanPlaceOnGrid)
+            HeldItem->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+            if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
             {
-                HeldItem->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-
-                // Tickでハイライト用に計算した座標と回転をそのまま配置先に使う
-                PlaceTargetLocation = CurrentGridTargetLocation;
-                PlaceTargetRotation = CurrentGridTargetRotation;
-
-                if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
-                {
-                    PrimComp->SetSimulatePhysics(false);
-                    PrimComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-                }
-                PlacingItem = HeldItem;
-                bIsItemPlacing = true;
-                HeldItem = nullptr;
-                bIsItemSnapping = false;
+                PrimComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+                PrimComp->SetSimulatePhysics(true);
+                FVector TossDir = (Forward + FVector(0, 0, 0.5f)).GetSafeNormal();
+                PrimComp->AddImpulse(TossDir * 300.0f * PrimComp->GetMass());
             }
-            else
-            {
-                // 床が見つからなかった場合（空中など）は「投げる」
-                HeldItem->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-                if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HeldItem->GetRootComponent()))
-                {
-                    PrimComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-                    PrimComp->SetSimulatePhysics(true);
-                    FVector TossDir = (Forward + FVector(0, 0, 0.5f)).GetSafeNormal();
-                    PrimComp->AddImpulse(TossDir * 300.0f * PrimComp->GetMass());
-                }
-                HeldItem = nullptr;
-                bIsItemSnapping = false;
-            }
+            HeldItem = nullptr;
+            bIsItemSnapping = false;
         }
     }
     else

@@ -11,12 +11,8 @@ ABobNPCCharacter::ABobNPCCharacter()
     GetCharacterMovement()->bOrientRotationToMovement = true;
     GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
 
-    // 初期状態は「お店に向かっている」
     CurrentState = ECustomerState::MovingToShop;
     CurrentPathIndex = 0;
-
-    // 追加: 初期化
-    TargetCounter = nullptr;
 }
 
 void ABobNPCCharacter::BeginPlay()
@@ -32,12 +28,11 @@ void ABobNPCCharacter::Tick(float DeltaTime)
     if (CurrentState == ECustomerState::MovingToShop && PathPoints.IsValidIndex(CurrentPathIndex))
     {
         FVector TargetLoc = PathPoints[CurrentPathIndex];
-        TargetLoc.Z = GetActorLocation().Z; // 高低差を無視して判定
+        TargetLoc.Z = GetActorLocation().Z; // 高低差を無視
 
-        // 目的地まで150cm以内に近づいたら「到着」とみなす
         if (FVector::Dist(GetActorLocation(), TargetLoc) < 150.0f)
         {
-            CurrentPathIndex++; // 次の経由地へ
+            CurrentPathIndex++;
             MoveToNextPathPoint();
         }
     }
@@ -47,10 +42,10 @@ void ABobNPCCharacter::Tick(float DeltaTime)
         FVector TargetLoc = ExitLocation;
         TargetLoc.Z = GetActorLocation().Z;
 
-        // 出口に到着したら
         if (FVector::Dist(GetActorLocation(), TargetLoc) < 150.0f)
         {
-            // キャラクターを消滅させる
+            // 帰りきったのでSpawnerに通知を送る（これで次の客が生成される）
+            OnCustomerLeft.Broadcast();
             Destroy();
         }
     }
@@ -65,7 +60,6 @@ void ABobNPCCharacter::MoveToDestination(FVector Destination)
     }
 }
 
-// スポナーから呼ばれる設定関数
 void ABobNPCCharacter::StartPathMovementWithDelay(TArray<FVector> InPathPoints, FVector InExitLocation, float DelayTime)
 {
     PathPoints = InPathPoints;
@@ -73,7 +67,6 @@ void ABobNPCCharacter::StartPathMovementWithDelay(TArray<FVector> InPathPoints, 
     CurrentPathIndex = 0;
     CurrentState = ECustomerState::MovingToShop;
 
-    // DelayTime秒後に ExecutePathMovement を呼ぶ
     FTimerHandle TimerHandle;
     GetWorld()->GetTimerManager().SetTimer(TimerHandle, this, &ABobNPCCharacter::ExecutePathMovement, DelayTime, false);
 }
@@ -83,7 +76,6 @@ void ABobNPCCharacter::ExecutePathMovement()
     MoveToNextPathPoint();
 }
 
-// 次のポイントへ移動指示を出す
 void ABobNPCCharacter::MoveToNextPathPoint()
 {
     if (PathPoints.IsValidIndex(CurrentPathIndex))
@@ -92,15 +84,28 @@ void ABobNPCCharacter::MoveToNextPathPoint()
     }
     else
     {
-        // 経由地を全て歩き終えたら「注文待ち」状態になる
+        // 目的地に着いたら待機状態にする（ここではアニメーションは再生しない）
         CurrentState = ECustomerState::Waiting;
     }
 }
 
-// ★プレイヤーが料理を渡した時に呼ばれる処理
+// プレイヤーがトマトを当てた時に呼ばれる処理
 void ABobNPCCharacter::ReceiveFoodAndLeave()
 {
-    // 状態を「帰宅」に変更し、出口へ向かわせる
+    // 待機中じゃなければ（お店に向かっている途中なら）無視する
+    if (CurrentState != ECustomerState::Waiting) return;
+
     CurrentState = ECustomerState::Leaving;
+
+    // Blueprintのイベントを呼び出し、リアクションアニメーションを再生
+    PlayReactionAnimation();
+
+    // ReactionTime秒後（例: 2.5秒後）に自動で歩いて帰る処理を呼ぶ
+    FTimerHandle WaitTimerHandle;
+    GetWorld()->GetTimerManager().SetTimer(WaitTimerHandle, this, &ABobNPCCharacter::StartWalkingHome, ReactionTime, false);
+}
+
+void ABobNPCCharacter::StartWalkingHome()
+{
     MoveToDestination(ExitLocation);
 }
