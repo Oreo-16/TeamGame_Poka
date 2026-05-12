@@ -5,6 +5,7 @@
 #include "BobSpawner.generated.h"
 
 class ABobNPCCharacter;
+class USceneComponent;
 
 UCLASS()
 class POKAPOKAECC_API ABobSpawner : public AActor
@@ -30,13 +31,11 @@ public:
     UPROPERTY(EditAnywhere, meta = (MakeEditWidget = true), Category = "Spawn")
     FVector ExitLocation;
 
-    // --- 追加: スポナーからBobに渡すためのカウンターの参照 ---
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn")
     AActor* TargetCounter;
 
     UFUNCTION(BlueprintCallable, Category = "Spawn")
     void SpawnAndMoveBob();
 
-    // ★追加: テスト用の関数（Enterキーを押したら呼ばれる）
     void TestMakeBobLeave();
 };
