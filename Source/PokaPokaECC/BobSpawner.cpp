@@ -35,7 +35,9 @@ void ABobSpawner::SpawnAndMoveBob()
 
     if (SpawnedBob)
     {
-        SpawnedBob->TargetCounter = this->TargetCounter;
+        // yíœzSpawnedBob->TargetCounter = this->TargetCounter;
+        // ‚±‚ê‚ðÁ‚·‚±‚Æ‚ÅABob–{l‚ÌBeginPlay‚Å‚ÌŒŸõ‚É”C‚¹‚é‚æ‚¤‚É‚È‚è‚Ü‚·B
+
         SpawnedBob->OnCustomerLeft.AddDynamic(this, &ABobSpawner::SpawnAndMoveBob);
 
         TArray<FVector> WorldPathLocations;

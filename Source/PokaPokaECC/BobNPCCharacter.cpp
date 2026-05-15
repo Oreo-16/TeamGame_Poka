@@ -4,6 +4,7 @@
 #include "TimerManager.h"
 #include "Navigation/PathFollowingComponent.h"
 #include "Animation/AnimMontage.h"
+#include "Kismet/GameplayStatics.h"
 
 ABobNPCCharacter::ABobNPCCharacter()
 {
@@ -15,11 +16,28 @@ ABobNPCCharacter::ABobNPCCharacter()
 
     CurrentState = ECustomerState::MovingToShop;
     CurrentPathIndex = 0;
+    MoneySpawnZOffset = 100.0f; 
 }
 
 void ABobNPCCharacter::BeginPlay()
 {
     Super::BeginPlay();
+
+    if (!TargetCounterTag.IsNone())
+    {
+        TArray<AActor*> FoundActors;
+        UGameplayStatics::GetAllActorsWithTag(GetWorld(), TargetCounterTag, FoundActors);
+
+        if (FoundActors.Num() > 0)
+        {
+            TargetCounter = FoundActors[0];
+            GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("Bob: FOUND Table with tag [%s]!"), *TargetCounterTag.ToString()));
+        }
+        else
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red, FString::Printf(TEXT("Bob: ERROR! Could not find tag [%s]!"), *TargetCounterTag.ToString()));
+        }
+    }
 }
 
 void ABobNPCCharacter::Tick(float DeltaTime)
@@ -70,6 +88,39 @@ void ABobNPCCharacter::MoveToNextPathPoint()
 void ABobNPCCharacter::ReceiveFoodAndLeave()
 {
     CurrentState = ECustomerState::Leaving;
+
+    if (MoneyClassToSpawn && TargetCounter)
+    {
+        FVector BobLocation = GetActorLocation();
+        FVector CounterLocation = TargetCounter->GetActorLocation();
+
+        FVector SpawnLocation = CounterLocation + FVector(0.0f, 0.0f, MoneySpawnZOffset);
+        FRotator SpawnRotation = TargetCounter->GetActorRotation();
+
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+        AActor* SpawnedMoney = GetWorld()->SpawnActor<AActor>(MoneyClassToSpawn, SpawnLocation, SpawnRotation, SpawnParams);
+
+        if (SpawnedMoney)
+        {
+            // 成功メッセージ（緑色）
+            GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("Bob: SUCCESS! Spawned Money!"));
+        }
+    }
+    else
+    {
+        // 失敗メッセージ（赤色）
+        if (!MoneyClassToSpawn)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red, TEXT("Bob: ERROR! MoneyClassToSpawn is NONE!"));
+        }
+        if (!TargetCounter)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red, TEXT("Bob: ERROR! TargetCounter is NULL when receiving food!"));
+        }
+    }
+
     MoveToDestination(ExitLocation);
 }
 

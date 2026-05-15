@@ -31,8 +31,9 @@ public:
     UPROPERTY(EditAnywhere, meta = (MakeEditWidget = true), Category = "Spawn")
     FVector ExitLocation;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn")
-    AActor* TargetCounter;
+    // 【削除しました】
+    // 以前ここにあった TargetCounter 変数を削除し、
+    // エディタ（詳細タブ）に表示されないようにしました。
 
     UFUNCTION(BlueprintCallable, Category = "Spawn")
     void SpawnAndMoveBob();
